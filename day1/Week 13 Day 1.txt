@@ -1,0 +1,489 @@
+Week 13 Day 1 Notes
+
+***JSON WEB TOKENS (JWT)***
+
+Widely-used method of authentication - React, React Native, Android, Swift, Flutter, iOS, etc.
+
+Let's say you have a React login Screen and a Node server. The login screen sends the request, the server validates the request and sends a response. But after initial login, if you are on another protected page, how does the server know you are authenticated?
+
+In JWT, when the server validates your request and sends a response, the response contains a token. It is up to the client to save this token in local storage. All future requests will need to send this token as well, in the header of each request. Then the token must be validated by the server. The token operates like a ticket stub or a handstamp if you're attempting physical re-entry to a place that requires a ticket to get in.
+
+The token is not saved in either a local or global state, because these are both cleared on page refresh. Local storage persists beyond page refresh (even beyond machine restart).
+
+So let's start with just a Node server to begin with, with Express and CORS installed.
+
+const express = require('express')
+const app = express()
+
+app.use(express.json())
+
+const users = [{
+  username: 'johndoe',
+  password: 'password'
+}]
+
+app.post('/login', (req, res) => {
+  const username = req.body.username
+  const password = req.body.password
+
+  let authUser = users.find((user) => user.username == username && user.password == password)
+  if(authUser) {
+    res.json({success: true})
+  } else {
+    res.json({success:false})
+  }
+})
+
+app.listen(8080, () => {
+  console.log('Server is running...')
+})
+
+Look for the extension Thunder Client in VS Code; this makes network requests easier. It's like Postman but built into VS Code. Let's try a POST request to localhost:8080/login...it looks like it's working correctly.
+
+So once the POST request is working correctly, then we have to generate a token to send to the client. How do we do that?  There's a package called jsonwebtoken that will do this for us:
+
+In the terminal: npm i jsonwebtoken
+
+Now let's put it to use:
+
+const jwt = require ('jsonwebtoken')
+
+
+We want to generate a token only when login is successful. The first argument of jwt.sign is an object and the second argument is a secret used to decode the token.
+DO NOT PUT SENSITIVE DATA IN THE TOKEN.
+
+app.post('/login', (req, res) {
+  const username = req.body.username
+  const password = req.body.password
+
+  users.find((user) => user.username == username && user.password == password)
+  if(authUser) {
+    const token = jwt.sign({ username: username }, 'SOMETHINGSECRET') 
+    res.json({success: true, token: token})
+  } else {
+    res.json({success:false})
+  }
+})
+
+Now if we try to run this, we can see we get a token back in the response from the server.
+
+Let's create a project to have a client-side, within our overall project folder:
+npm create-react-app client
+then cd client
+npm start
+
+just to start up the basic default app.
+
+So now we need to create a component that will allow users to login. Let's make a components folder and a Login component.
+
+in Login.js
+
+function Login() {
+  return (
+    <div>
+      <h1>Login</h1>
+      <input type='text' placeholder='username' />
+      <input type='text' placeholder='password' />
+      <button>Login</button>
+    </div>
+  )
+}
+
+export default Login
+
+And let's inject this component into our App component.
+
+Now we want to add these values to our state, so back in Login.js:
+
+import { useState } from 'react'
+
+function Login() {
+  const [credentials, setCredentials] = useState({})
+  
+  const handleChange = (e) => {
+    setCredentials({
+      ...credentials,
+      [e.target.name]: e.target.value
+    })
+  }
+
+  const handleLogin = () => {
+    fetch('localhost:8080/login', {
+      method: 'POST', 
+      headers: {
+        'Content-Type': 'application/json'
+      }
+      body: JSON.stringify(credentials)
+    })
+  }
+
+
+  return (
+    <div>
+      <h1>Login</h1>
+      <input type='text' onChange = {handleChange} placeholder='username' name='username'/>
+      <input type='password' onChange = {handleChange} placeholder='password' name='password'/>
+      <button onClick = {handleLogin}>Login</button>
+    </div>
+  )
+}
+
+Let's see if this is working. In our Network tab in the Dev Tools, something failed. It looks like we're getting a CORS issue - because we forgot to implement CORS in our app:
+const cors = require('cors')
+app.use(cors())
+
+So now this is working. Let's implement our local storage of the token:
+
+  const handleLogin = () => {
+    fetch('localhost:8080/login', {
+      method: 'POST', 
+      headers: {
+        'Content-Type': 'application/json'
+      }
+      body: JSON.stringify(credentials)
+    }).then(response => response.json())
+    .then(result => {
+      if(result.success {
+        const token = result.token
+        // key and value will both be strings for the localStorage object
+        localStorage.setItem('jsonwebtoken', token)
+      }
+    })
+  }
+
+How do we confirm that we've successfully put the token in local storage?  In our Dev Tools at the left, there is a Local Storage item. If something's already there, refresh the page to clear it out. Then you can enter a username and password, and if it's good, you can see that token appear.
+
+What if we wanted to get logged in and then see all out accounts? We need to install react-router-dom and get some other components built.
+
+in BaseLayout.js:
+
+function BaseLayout(props) { 
+  return (
+    <div>
+      Menu
+      {props.children}
+   </div>
+  )
+}
+
+export default BaseLayout
+
+in index.js:
+
+import {BrowserRouter, Switch, Route } from 'react-router-dom'
+
+<BrowserRouter>
+<BaseLayout>
+<Switch>
+<Route exact path='/' component={Login} />
+</Switch>
+</BaseLayout>
+</BrowserRouter>
+
+Let's make a Dashboard component:
+
+function Dashboard() {
+  return (
+    <h1>Dashboard</h1>
+  )
+}
+
+export default Dashboard
+
+and let's add a route for it in index.js:
+
+<BrowserRouter>
+<BaseLayout>
+<Switch>
+<Route exact path='/' component={Login} />
+<Route exact path='/dashboard' component={Dashboard} />
+</Switch>
+</BaseLayout>
+</BrowserRouter>
+
+in login, let's take the user to the Dashboard after login:
+
+  const handleLogin = () => {
+    fetch('localhost:8080/login', {
+      method: 'POST', 
+      headers: {
+        'Content-Type': 'application/json'
+      }
+      body: JSON.stringify(credentials)
+    }).then(response => response.json())
+    .then(result => {
+      if(result.success {
+        const token = result.token
+        localStorage.setItem('jsonwebtoken', token)
+         props.history.push('/dashboard')
+      }
+    })
+  }
+
+So we can test this out, and it works - we're getting sent to the Dashboard after a successful login.
+
+
+***ACTIVITY 1 - CREATE/RETURN JSON WEB TOKEN***
+
+Since we're not building a React app just for this activity, we need a GET route in the server:
+
+app.get('/token', (req, res) => {
+  const token = jwt.sign({username: 'johndoe', 'SECRET')
+  res.json({token:token})
+})
+
+
+NEXT - how do we get the server to return us sensitive information (bank account page, etc)?
+
+Let's create some accounts:
+const accounts = [{
+  name: "Checking",
+  balance: 5000,
+  username: "johndoe"
+})
+
+Then let's make a get-accounts route:
+
+app.get('/accounts/:username', (req, res) => {
+  const username = req.params.username
+  const userAccounts = accounts.filter(account => account.username == username)
+  res.json({accounts: userAccounts})
+})
+
+Let's check this out in postman or thunder client:
+GET to http://localhost:8080/accounts/johndoe
+
+So this currently returns accounts. But this means right now anyone who has your username could see this. That's not good. How do we protect this route? We need to first pass and then validate the token.
+
+Things that you need to add to the header to pass the token:
+
+Authorization: Bearer oweriuoulskjdfls
+(where the owerblahblah is the token)
+
+Then the server needs to verify the token. 
+
+Bearer technically could be anything, but by convention for people reading requests, Bearer signifies to them that this is a JSON Web Token.
+
+app.get('/accounts/:username', (req, res) => {
+  const headers = req.headers
+  console.log(headers)
+
+  const username = req.params.username
+  const userAccounts = accounts.filter(account => account.username == username)
+  res.json({accounts: userAccounts})
+})
+
+Let's print this out to see what we get. We can see the token under the Authorization heading.
+
+app.get('/accounts/:username', (req, res) => {
+  const headers = req.headers
+  if(headers) {
+    const authorization = headers['authorization']
+    if(authorization) {
+      const token = authorization.split(' ')[1]  
+      console.log(token)
+    }
+  }
+
+  const username = req.params.username
+  const userAccounts = accounts.filter(account => account.username == username)
+  res.json({accounts: userAccounts})
+})
+
+.split() will convert your string into an array split wherever it finds the value passed (the space). Then we want the index of the 2nd part, so [1].
+
+Now we need to decode it:
+
+
+app.get('/accounts/:username', (req, res) => {
+  const headers = req.headers
+  if(headers) {
+    const authorization = headers['authorization']
+    if(authorization) {
+      const token = authorization.split(' ')[1] 
+      const decoded = jwt.verify(token, 'SOMETHINGSECRET')
+      console.log(decoded)
+    }
+  }
+
+  const username = req.params.username
+  const userAccounts = accounts.filter(account => account.username == username)
+  res.json({accounts: userAccounts})
+})
+
+So when we run this now, we get the username and some iat property - this is how long before the token will expire in seconds.  
+
+app.get('/accounts/:username', (req, res) => {
+  const headers = req.headers
+  if(headers) {
+    const authorization = headers['authorization']
+    if(authorization) {
+      const token = authorization.split(' ')[1] 
+      const decoded = jwt.verify(token, 'SOMETHINGSECRET')
+      if(decoded) {
+        const username = decoded.username
+        const authUser = users.find(user => user.username ==username)
+        if(authUser) {
+           const userAccounts = accounts.filter(account => account.username == username)
+           res.json({accounts: userAccounts})
+        } else {
+           res.json({error: 'unable to authenticate})
+      } else {
+          res.json({error: 'required headers are missing...'})
+    }
+})
+
+You want relatively general error messages, so that if someone is trying for unauthorized access, it doesn't point them right to the exact point of failure.
+
+Let's try this route again in Thunder Client without the authorization checked, and again with the token modified - you can see now we get errors. So the only way to get your data is to pass a valid token.
+
+Now how can we send this sort of GET request from the client?
+
+in Dashboard.js:
+
+import { useEffect } from 'react'
+
+function Dashboard() {
+  useEffect(() => {
+    fetchAllAccounts()
+  }, [])
+
+  const fetchAllAccounts = () => {
+    fetch('http://localhost:8080/accounts/johndoe')    //for now, we'll hard-code the username
+    .then(response => response.json())
+    .then(accounts => {
+      console.log(accounts)
+    })
+   }
+
+   return(
+     <h1>Dashboard</h1>
+   }
+}
+
+export default Dashboard
+
+Let's refresh our localhost:3000/dashboard - we get an error in the console that says "required headers are missing".  Why is this? It's because we're not sending the token anywhere.
+
+Where is the token? Local storage. We need to get it from there to send it.
+
+  const fetchAllAccounts = () => {
+    const token = localstorage.getItem('jsonwebtoken')
+
+    fetch('http://localhost:8080/accounts/johndoe'), {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`  //inject with template literal
+    .then(response => response.json())
+    .then(accounts => {
+      console.log(accounts)
+    })
+   }
+
+Now we can try this again from the client side to see if the headers/token are being sent. In the DevTools, under the Network and XHR tabs, if we click on the username, we can see the token being sent under Authorization.  If we click on Response, we can see that it did send the accounts. So from there we can save the information to the local state and also display the information on the screen:
+
+  const fetchAllAccounts = () => {
+    const token = localstorage.getItem('jsonwebtoken')
+
+    fetch('http://localhost:8080/accounts/johndoe'), {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}` 
+    .then(response => response.json())
+    .then(accounts => {
+      setAccounts(accounts)      // save to local state
+    })
+   }
+
+   const accountItems = accounts.map((account) => {
+    return<div>{account.name - {account.balance} </div>    // display on screen
+   })
+
+   return (
+     <div>
+     <h1>Dashboard</h1>
+     {accountItems}
+     </div>
+   )
+   
+
+We also need to change our get request to not return an object:
+
+app.get('/accounts/:username', (req, res) => {
+  const headers = req.headers
+  if(headers) {
+    const authorization = headers['authorization']
+    if(authorization) {
+      const token = authorization.split(' ')[1] 
+      const decoded = jwt.verify(token, 'SOMETHINGSECRET')
+      if(decoded) {
+        const username = decoded.username
+        const authUser = users.find(user => user.username ==username)
+        if(authUser) {
+           const userAccounts = accounts.filter(account => account.username == username)
+           res.json(userAccounts)           // <-- change was made here
+        } else {
+           res.json({error: 'unable to authenticate})
+      } else {
+          res.json({error: 'required headers are missing...'})
+    }
+})
+
+Now we should be able to see our accounts on the screen.
+
+So the next thing - how do we get the username INTO the fetch request?
+
+Right now our app.post doesn't have the username in the server response - we should add it:
+
+app.post('/login', (req, res) {
+  const username = req.body.username
+  const password = req.body.password
+
+  users.find((user) => user.username == username && user.password == password)
+  if(authUser) {
+    const token = jwt.sign({ username: username }, 'SOMETHINGSECRET') 
+    res.json({success: true, token: token, username: username})
+  } else {
+    res.json({success:false})
+  }
+})
+
+Then in the Login component:
+
+  const handleLogin = () => {
+    fetch('localhost:8080/login', {
+      method: 'POST', 
+      headers: {
+        'Content-Type': 'application/json'
+      }
+      body: JSON.stringify(credentials)
+    }).then(response => response.json())
+    .then(result => {
+      if(result.success {
+        const token = result.token
+        // key and value will both be strings for the localStorage object
+        localStorage.setItem('jsonwebtoken', token)
+        localStorage.setItem('username', username)
+      }
+    })
+  }
+
+Then in Dashboard:
+
+  const fetchAllAccounts = () => {
+    const token = localStorage.getItem('jsonwebtoken')
+    const username = localStorage.getItem('username')
+
+    fetch(`http://localhost:8080/accounts/${username}`), {     //using template literal
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}` 
+    .then(response => response.json())
+    .then(accounts => {
+      setAccounts(accounts)      // save to local state
+    })
+   }
+
+You can start to see problems - for every protected route, you'd need all that code for the authentication check in every route.  Also, on the client side, when we ask for any protected info, we need to send the token again and again.  Maybe there are ways to simplify this - we'll look into that tomorrow.  Also, right now, even if protected info isn't sent, you can still load pages that should be protected.
+
+ASSIGNMENT - put JWT authentication on your bookbarn app.
