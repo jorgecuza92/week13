@@ -1,6 +1,4 @@
-# week13
-
-# Book Barn - ADVANCED REDUX TOPICS
+# week13 - Book Barn - ADVANCED REDUX TOPICS
 In this assignment you are going to create a custom API using NodeJS which will perform CRUD operations on a database. You can use any database you want. 
 
 Your app should consists of the following features: 
